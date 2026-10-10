@@ -1,8 +1,8 @@
 # 仿B站视频平台（全栈：Spring Boot 后端 + Vue3 前端）
 
-一个仿照 B 站（Bilibili）的视频分享平台全栈项目：后端重点实现了 **视频分块上传 / 断点续传 / 秒传** 这一区别于普通单文件上传的核心能力，并围绕高并发读场景落地了 Redis 缓存、布隆过滤器防穿透、计数异步落库、RocketMQ 异步消息等工程实践；前端基于 **Vue3 + Element Plus** 实现了登录注册、视频列表、分块上传（断点续传/秒传/进度条）、视频播放（弹幕/点赞/收藏/评论/关注）、个人主页、消息中心等完整页面。
+一个仿照 B 站（Bilibili）的视频分享平台全栈项目：后端重点实现了 **视频分块上传 / 断点续传 / 秒传**、**个性化推荐**、**广告投放（CPM 计费）** 与 **AI 内容审核** 等核心能力，并围绕高并发读场景落地了 Redis 缓存、布隆过滤器防穿透、计数异步落库等工程实践；前端基于 **Vue3 + Element Plus** 实现了登录注册、视频列表、分块上传（断点续传/秒传/进度条）、视频播放（弹幕/点赞/收藏/评论/投币/关注）、分区频道、商家中心、消息中心等完整页面，前后端一体化打包、Docker 一键部署于阿里云。
 
-> 技术栈：Spring Boot 3 + MyBatis + MySQL 8 + Redis + RocketMQ + FastDFS + Nginx
+> 技术栈：Spring Boot 3 · MyBatis · MySQL 8 · Redis · Vue3 · Element Plus · Docker · DeepSeek · 通义千问 Qwen-VL · ffmpeg
 
 ---
 
@@ -16,8 +16,11 @@
 | 视频模块 | **分块上传 + 断点续传 + 秒传 + 分片合并**、封面图上传、视频列表 / 详情 / 播放、投稿管理、**作者编辑 / 删除自己的视频**、**观看历史** |
 | 互动模块 | 点赞 / 取消点赞、收藏 / 取消收藏、**投币 / 取消投币**、评论（含回复/子评论）、弹幕（MySQL 存储） |
 | 消息模块 | 点赞 / 评论 / 回复 / 关注 异步通知（RocketMQ 异步投递 + 降级直接落库）、**点对点私信** |
-| 后台模块 | **管理员审核**：视频下架 / 恢复、用户封禁 / 解封、违规评论删除 |
-| 分区模块 | 视频分类列表（Redis 缓存） |
+| 广告模块 | 商家发布广告（CPM 计费）、兴趣定向投放、曝光扣费 / 预算控制、点击统计 |
+| 商家模块 | 商家申请 / 审核、积分充值、商家自助管理广告 |
+| 内容审核 | 发布视频 / 广告前 **AI 自动审核**：DeepSeek 文本 + 通义千问 Qwen-VL 视觉 + ffmpeg 视频抽帧，违规自动拦截 |
+| 后台模块 | **管理员审核**：视频下架 / 恢复、用户封禁 / 解封、违规评论删除、商家申请审核 / 积分充值、广告管理 |
+| 分区模块 | 视频分类列表（Redis 缓存）+ 分区频道页 |
 
 ### 核心设计亮点
 
@@ -27,6 +30,8 @@
 4. **高并发计数**：点赞 / 收藏数由 Redis Set 原子维护（SADD/SREM），播放量 INCR 自增，通过定时任务批量回写 MySQL，避免高频写库。
 5. **Redis 原子会话**：登录 token 存入 Redis，支持滑动续期与退出删除。
 6. **异步解耦**：点赞 / 评论 / 关注 / 转码等消息通过 RocketMQ 异步处理，未部署 broker 时优雅降级为本地直写，开箱即用。
+7. **AI 内容审核**：发布视频 / 广告前，用 DeepSeek 审核标题简介标签，用通义千问 Qwen-VL 审核封面图与 ffmpeg 抽取的视频帧；未配 Key 或调用异常时自动 fail-open 放行，不阻塞正常发布。
+8. **广告投放**：兴趣定向投放（按用户偏好分区）、CPM 计费（每千次曝光扣费）、预算耗尽自动下线、余额不足自动暂停。
 
 ---
 
@@ -42,6 +47,10 @@
 | RocketMQ | 异步消息（转码、通知） | client 4.9.7 |
 | FastDFS | 分布式文件存储（可选，默认本地存储） | — |
 | Nginx | 静态资源 / 视频访问代理（生产） | — |
+| Docker | 容器化部署（app / mysql / redis 编排） | — |
+| DeepSeek | AI 文本审核（deepseek-chat） | — |
+| 通义千问 Qwen-VL | AI 视觉审核（封面图 / 视频帧） | qwen-vl-max |
+| ffmpeg | 视频抽帧（审核用） | — |
 | Lombok / Hutool | 开发提效工具 | 5.8.26 |
 | Validation | 参数校验（jakarta） | — |
 
@@ -61,8 +70,8 @@ bilbil
 │   │   ├── result/                 # 统一返回 Result / ResultCode / PageResult
 │   │   └── util/                   # UserContext、布隆过滤器工具
 │   ├── config/                     # 配置类（Redis / Web / RocketMQ / 业务属性）
-│   ├── controller/                 # 接口层（9 个 Controller）
-│   ├── service/                    # 业务层
+│   ├── controller/                 # 接口层（16 个 Controller）
+│   ├── service/                    # 业务层（含 ContentModerationService 审核、FrameExtractor 抽帧）
 │   ├── mapper/                     # MyBatis 数据访问层
 │   ├── entity/  dto/  vo/          # 实体 / 入参 / 出参
 │   ├── interceptor/                # 登录拦截器
@@ -76,7 +85,7 @@ bilbil
 
 ## 四、数据库设计
 
-共 **13 张表**（建表 SQL 见 [sql/bilbil.sql](sql/bilbil.sql)，已有库升级见 [sql/upgrade_v2.sql](sql/upgrade_v2.sql)）：
+共 **15 张表**（建表 SQL 见 [sql/bilbil.sql](sql/bilbil.sql)，已有库升级见 [sql/upgrade_v2.sql](sql/upgrade_v2.sql) / [sql/upgrade_v3.sql](sql/upgrade_v3.sql)）：
 
 | 表名 | 说明 |
 | --- | --- |
@@ -93,6 +102,8 @@ bilbil
 | `danmaku` | 弹幕（按视频时间点存储） |
 | `message_notify` | 消息通知 |
 | `private_message` | 私信（点对点） |
+| `merchant_apply` | 商家申请（提交 / 审核 / 拒绝） |
+| `ad` | 广告（CPM / 预算 / 曝光 / 点击 / 消耗 / 投放状态） |
 
 > 注意：视频的点赞数 / 收藏数 / 投币数 / 播放量**不实时更新主表**，以 Redis 为准，由定时任务 `CountFlushTask` 每 30 秒批量回写 `video` 表。
 
@@ -138,7 +149,13 @@ bilbil:
     access-domain: http://localhost:8080
   rocketmq:
     enabled: false             # 开启后需部署 RocketMQ NameServer
+  moderation:
+    enabled: true
+    text-api-key: ${DEEPSEEK_API_KEY:}      # DeepSeek 文本审核
+    vision-api-key: ${DASHSCOPE_API_KEY:}   # 通义千问 Qwen-VL 视觉审核
 ```
+
+> AI 内容审核默认开启，但**未配置对应 Key 时对应环节自动跳过**（fail-open），不影响本地运行。
 
 ### 4. 启动
 
@@ -161,6 +178,17 @@ java -jar target/bilbil-*.jar
 1. 部署 FastDFS tracker / storage；
 2. 配置 `bilbil.storage.type: fastdfs` 与 `bilbil.fastdfs.tracker-servers`；
 3. 重启应用，视频与封面将上传至 FastDFS。
+
+### 7. Docker 一键部署（生产 / 阿里云）
+
+完整生产部署见 [deploy/DEPLOY.md](deploy/DEPLOY.md)，核心流程：
+
+1. 本地 `mvn clean package -DskipTests` 打出含前端的 jar；
+2. 把 jar、`Dockerfile`、`docker-compose.yml`、`sql/`、`.env` 上传到服务器 `/opt/bilbil`；
+3. 在 `.env` 里配置 `DB_PASSWORD`、`DEEPSEEK_API_KEY`、`DASHSCOPE_API_KEY`、`ACCESS_DOMAIN` 等；
+4. `docker compose up -d --build`，浏览器直接访问 `http://服务器IP:8081/`。
+
+> 前端已打包进 jar 由 Spring Boot 单端口托管，无需 Nginx。
 
 ---
 
@@ -215,6 +243,25 @@ java -jar target/bilbil-*.jar
 | POST | `/api/danmaku/send` | 发送弹幕 | 是 |
 | GET | `/api/danmaku/list` | 弹幕列表（videoId/from/to） | 否 |
 
+### 广告模块
+
+| 方法 | 路径 | 说明 | 鉴权 |
+| --- | --- | --- | --- |
+| POST | `/api/ad` | 发布广告 | 是（商家） |
+| GET | `/api/ad/my` | 我的广告列表 | 是（商家） |
+| PUT | `/api/ad/{id}/status` | 暂停 / 继续 / 结束广告 | 是（商家） |
+| DELETE | `/api/ad/{id}` | 删除广告 | 是（商家） |
+| POST | `/api/ad/cover` | 上传广告图 | 是（商家） |
+| GET | `/api/ad/feed` | 信息流广告（兴趣定向投放） | 否 |
+| POST | `/api/ad/{id}/click` | 广告点击（CTR 统计） | 否 |
+
+### 商家模块
+
+| 方法 | 路径 | 说明 | 鉴权 |
+| --- | --- | --- | --- |
+| POST | `/api/merchant/apply` | 提交商家申请 | 是 |
+| GET | `/api/merchant/apply` | 查询我的最新申请 | 是 |
+
 ### 关注 / 分区 / 消息模块
 
 | 方法 | 路径 | 说明 | 鉴权 |
@@ -248,6 +295,12 @@ java -jar target/bilbil-*.jar
 | PUT | `/api/admin/user/{id}/status` | 用户封禁/解封 | 是（管理员） |
 | GET | `/api/admin/comments` | 评论列表 | 是（管理员） |
 | DELETE | `/api/admin/comment/{id}` | 删除违规评论 | 是（管理员） |
+| GET | `/api/admin/merchant-applies` | 商家申请列表 | 是（管理员） |
+| PUT | `/api/admin/merchant-apply/{id}/review` | 审核商家申请 | 是（管理员） |
+| GET | `/api/admin/merchants` | 商家列表（含积分余额） | 是（管理员） |
+| PUT | `/api/admin/merchant/{id}/recharge` | 商家积分充值 | 是（管理员） |
+| GET | `/api/admin/ads` | 广告列表 | 是（管理员） |
+| PUT | `/api/admin/ad/{id}/status` | 广告上架 / 暂停 / 结束 | 是（管理员） |
 
 ---
 
@@ -283,8 +336,8 @@ bilbil-web/
     ├── stores/auth.js        # Pinia：token/user 持久化
     ├── api/                  # request.js（axios 封装） + 各模块接口
     ├── utils/chunkUpload.js  # 分块上传核心（秒传 / 断点续传 / 并发缺块）
-    ├── components/           # VideoCard / DanmakuLayer / CommentSection
-    └── views/                # Login / Register / Home / Upload / Play / Profile / Message
+    ├── components/           # VideoCard / DanmakuLayer / CommentSection / BannerCarousel（轮播：广告+热门视频）/ AdCard
+    └── views/                # Login / Register / Home / Category / Upload / Play / Profile / Message / History / PrivateMessage / Merchant / Admin
 ```
 
 ### 启动步骤
