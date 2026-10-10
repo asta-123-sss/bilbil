@@ -1,0 +1,86 @@
+# =====================================================================
+# 仿B站视频平台 应用配置
+# =====================================================================
+server:
+  port: 8080
+
+spring:
+  application:
+    name: bilbil
+
+  # ---------------- MySQL 数据源 ----------------
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/bilbil?useUnicode=true&characterEncoding=UTF-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+    username: root
+    password: 123456
+
+  # ---------------- Redis ----------------
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password:            # 无密码留空
+      database: 0
+      timeout: 5000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+
+  # ---------------- 文件上传大小限制（分片上传需要较大限制） ----------------
+  servlet:
+    multipart:
+      max-file-size: 512MB
+      max-request-size: 1024MB
+
+  # ---------------- Jackson 全局 JSON 序列化 ----------------
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null   # 序列化时忽略 null 字段
+
+# ---------------- MyBatis ----------------
+mybatis:
+  configuration:
+    map-underscore-to-camel-case: true      # 数据库下划线字段映射到 Java 驼峰属性
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl   # 开发期打印 SQL，生产可移除
+
+# ---------------- 自定义业务配置 ----------------
+bilbil:
+  # 文件存储：local 本地存储（默认，开箱即用） | fastdfs 分布式存储
+  storage:
+    type: local
+    local-path: ./upload              # 本地存储根目录
+    access-domain: http://localhost:8080   # 静态资源访问域名（生产环境为 Nginx 域名）
+  # FastDFS 配置（storage.type=fastdfs 时生效）
+  fastdfs:
+    tracker-servers: 192.168.1.100:22122   # tracker 地址，多个用逗号分隔
+    connect-timeout: 5000
+    network-timeout: 30000
+  # RocketMQ 配置（enabled=true 时启用；开发期可关闭，关闭后消息直接本地落库）
+  rocketmq:
+    enabled: false
+    name-server: 127.0.0.1:9876
+    producer-group: bilbil-producer-group
+    consumer-group: bilbil-consumer-group
+  # 登录会话 token 有效期
+  token:
+    expire-days: 7
+  # AI 内容审核（发布视频/广告前自动审核；未配 key 时自动跳过放行）
+  moderation:
+    enabled: ${BILBIL_MODERATION_ENABLED:true}
+    text-api-key: ${DEEPSEEK_API_KEY:}
+    text-base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+    text-model: ${DEEPSEEK_MODEL:deepseek-chat}
+    vision-api-key: ${DASHSCOPE_API_KEY:}
+    vision-base-url: ${DASHSCOPE_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    vision-model: ${DASHSCOPE_MODEL:qwen-vl-max}
+    frame-count: 3
+    timeout-seconds: 120
+
+# ---------------- 日志 ----------------
+logging:
+  level:
+    com.bilbil: debug

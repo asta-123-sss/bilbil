@@ -1,0 +1,26 @@
+/* 全局基础样式（含移动端适配辅助） */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #f4f4f4;
+}
+
+/* 手机端：弹窗 / 确认框自适应宽度，避免横向溢出 */
+@media (max-width: 768px) {
+  .el-dialog {
+    width: 92% !important;
+    max-width: 92vw;
+  }
+  .el-message-box {
+    width: 92% !important;
+    max-width: 92vw;
+  }
+}

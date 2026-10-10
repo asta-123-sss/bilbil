@@ -1,0 +1,19 @@
+# 前端源码与依赖（前端构建产物已打包进 src/main/resources/static，源码不参与镜像构建）
+bilbil-web/
+node_modules/
+# 本地构建产物与运行产物
+target/
+upload/
+dist/
+# 数据库脚本（作为 volume 挂载给 MySQL，无需打进镜像）
+sql/
+# 其他
+.git/
+.idea/
+.vscode/
+*.iml
+*.log
+.env
+docker-compose.yml
+Dockerfile
+.dockerignore

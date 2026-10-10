@@ -1,0 +1,82 @@
+# =====================================================================
+# 仿B站视频平台 生产部署编排（与 fitness-training-agent 同一套套路）
+# 端口规划：宿主机 3306/6379/8080 已被 fitness 项目占用，
+#          本项目的 app 映射到宿主机 8081（公网可直接 http://IP:8081 访问，
+#          前端已打进 jar 里，无需 Nginx）；mysql/redis 不暴露宿主机端口。
+# =====================================================================
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: bilbil-mysql
+    restart: unless-stopped
+    mem_limit: 1g
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root123456}
+      MYSQL_DATABASE: bilbil
+      TZ: Asia/Shanghai
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      - --performance-schema=OFF
+      - --innodb-buffer-pool-size=384M
+      - --innodb-buffer-pool-instances=1
+    volumes:
+      - mysql-data:/var/lib/mysql
+      # 首次启动自动执行建表脚本（仅空数据卷时执行一次）
+      - ./sql/bilbil.sql:/docker-entrypoint-initdb.d/01-bilbil.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${DB_PASSWORD:-root123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: bilbil-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    container_name: bilbil-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SERVER_PORT: "8080"
+      # JVM 堆内存上限：2C4G 服务器留足余量
+      JAVA_TOOL_OPTIONS: "-Xmx1g -Xms256m"
+      # 数据库 / Redis：容器内网用服务名 mysql、redis
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bilbil?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true&rewriteBatchedStatements=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-root123456}
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"
+      SPRING_DATA_REDIS_PASSWORD: ""
+      # 文件存储：视频/封面写入容器内 /data/upload（挂载到命名卷）
+      BILBIL_STORAGE_TYPE: local
+      BILBIL_STORAGE_LOCAL_PATH: /data/upload
+      # 静态资源对外访问地址（必改：换成 http://你的服务器IP:8081，结尾不带斜杠）
+      BILBIL_STORAGE_ACCESS_DOMAIN: ${ACCESS_DOMAIN:-http://47.243.8.223:8081}
+      TZ: Asia/Shanghai
+      # AI 内容审核：DeepSeek 文本 + 通义千问 Qwen-VL 视觉（key 从 .env 读取，未配则自动跳过审核）
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      DASHSCOPE_API_KEY: ${DASHSCOPE_API_KEY:-}
+    ports:
+      - "8081:8080"   # 公网可访问：浏览器直接开 http://服务器IP:8081（前端已打包进 jar）
+    volumes:
+      - upload-data:/data/upload
+
+volumes:
+  mysql-data:
+  redis-data:
+  upload-data:
