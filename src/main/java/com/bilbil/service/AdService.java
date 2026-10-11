@@ -5,6 +5,7 @@ import com.bilbil.common.constant.AdConstant;
 import com.bilbil.common.exception.BusinessException;
 import com.bilbil.common.result.PageResult;
 import com.bilbil.common.result.ResultCode;
+import com.bilbil.config.BilbilProperties;
 import com.bilbil.dto.AdCreateDTO;
 import com.bilbil.dto.ModerationResult;
 import com.bilbil.entity.Ad;
@@ -25,6 +26,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -42,6 +44,8 @@ public class AdService {
     private final CategoryService categoryService;
     private final FileStorageService fileStorageService;
     private final ContentModerationService moderationService;
+    private final BilbilProperties properties;
+    private final AdRankingService adRankingService;
 
     private void requireMerchant(Long userId) {
         User user = userMapper.selectById(userId);
@@ -123,6 +127,29 @@ public class AdService {
      * 定向无结果或未登录时回退到任意投放中的广告。
      */
     public List<AdVO> serve(Long userId) {
+        // 智能投放：DeepSeek 按用户画像排序（未启用 / 无 key / 冷启动 / 失败时自动回退规则式）
+        if (userId != null) {
+            BilbilProperties.AdRanking cfg = properties.getAdRanking();
+            List<Ad> pool = adMapper.selectActiveForServing(null, cfg.getCandidatePoolSize());
+            List<Long> ranked = adRankingService.rank(userId, pool);
+            if (ranked != null && !ranked.isEmpty()) {
+                Map<Long, Ad> byId = pool.stream()
+                        .collect(Collectors.toMap(Ad::getId, Function.identity(), (a, b) -> a));
+                List<Ad> ordered = ranked.stream()
+                        .map(byId::get)
+                        .filter(Objects::nonNull)
+                        .limit(cfg.getTopN())
+                        .toList();
+                if (!ordered.isEmpty()) {
+                    return serveAds(ordered);
+                }
+            }
+        }
+        return serveRuleBased(userId);
+    }
+
+    /** 规则式投放：按用户偏好分区过滤 + 随机（智能投放的回退方案） */
+    private List<AdVO> serveRuleBased(Long userId) {
         List<Long> categoryIds = null;
         if (userId != null) {
             List<CategoryStatVO> stats = videoMapper.selectUserCategoryStats(userId);
@@ -135,6 +162,11 @@ public class AdService {
         if (ads.isEmpty() && categoryIds != null) {
             ads = adMapper.selectActiveForServing(null, 5);
         }
+        return serveAds(ads);
+    }
+
+    /** 逐条计费曝光并组装 VO */
+    private List<AdVO> serveAds(List<Ad> ads) {
         List<AdVO> result = new ArrayList<>();
         for (Ad ad : ads) {
             chargeImpression(ad);

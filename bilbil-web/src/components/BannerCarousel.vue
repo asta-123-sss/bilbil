@@ -13,7 +13,7 @@ const router = useRouter()
 // 没有广告和热门视频时的占位渐变图（兜底）
 const FALLBACK_SLIDES = [
   {
-    title: '欢迎来到仿B站视频平台',
+    title: '欢迎来到映界',
     subtitle: '发现你感兴趣的优质内容',
     bg: 'linear-gradient(120deg, #fb7299 0%, #ff8fb0 55%, #ffb3c8 100%)',
     icon: '📺'

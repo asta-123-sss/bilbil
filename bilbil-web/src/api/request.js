@@ -6,7 +6,7 @@ import router from '../router'
 // 统一 axios 实例：baseURL 为 /api，开发环境经 Vite 代理转发到后端
 const request = axios.create({
   baseURL: '/api',
-  timeout: 60000
+  timeout: 120000
 })
 
 // 请求拦截：自动携带登录 token

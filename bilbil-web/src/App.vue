@@ -79,7 +79,7 @@ watch(() => auth.isLogin, refreshUnread)
             <rect x="2" y="6" width="30" height="16" rx="4" fill="#fb7299" />
             <path d="M9 6 L9 2 M16 6 L16 2" stroke="#fb7299" stroke-width="2.6" stroke-linecap="round" />
           </svg>
-          <span class="logo-text">bilibili</span>
+          <span class="logo-text">映界</span>
         </div>
 
         <nav class="nav">

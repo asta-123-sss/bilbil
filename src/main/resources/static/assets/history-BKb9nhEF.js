@@ -1,0 +1,1 @@
+import{C as t}from"./index-Dk-XQZbA.js";const e=s=>t.get("/history",{params:s}),i=(s,o)=>t.post(`/video/${s}/watch`,{progress:o}),a=s=>t.delete(`/history/${s}`),c=()=>t.delete("/history");export{a,c,e as l,i as r};

@@ -14,9 +14,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 
+import org.apache.catalina.connector.ClientAbortException;
+
 import jakarta.validation.ConstraintViolation;
 import jakarta.validation.ConstraintViolationException;
 
+import java.io.IOException;
 import java.util.stream.Collectors;
 
 /**
@@ -97,6 +100,15 @@ public class GlobalExceptionHandler {
     public Result<Void> handleMaxUploadSize(MaxUploadSizeExceededException e) {
         log.warn("上传文件大小超限");
         return Result.fail(ResultCode.BAD_REQUEST.getCode(), "上传文件大小超过限制");
+    }
+
+    /**
+     * 客户端在视频/文件流传输途中断开（拖进度条、跳页、断网等），属正常现象。
+     * 此时响应已提交或连接已断，不能再写 JSON，静默忽略即可。
+     */
+    @ExceptionHandler({ClientAbortException.class, IOException.class})
+    public void handleClientAbort(Exception e) {
+        log.debug("客户端中断连接，忽略: {}", e.getMessage());
     }
 
     /**

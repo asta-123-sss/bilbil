@@ -42,6 +42,8 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.stream.Collectors;
 
@@ -199,15 +201,6 @@ public class VideoService {
         String fileId = fileStorageService.upload(mergedBytes, ext);
         String videoUrl = fileStorageService.getAccessUrl(fileId);
 
-        // AI 内容审核（文字 + 封面图 + 视频抽帧）；不通过则清理已上传文件并驳回（未配 key 时内部自动放行）
-        ModerationResult moderation = moderationService.moderateVideo(
-                dto.getTitle(), dto.getDescription(), dto.getTags(), dto.getCoverUrl(), mergedBytes);
-        if (!moderation.passed()) {
-            fileStorageService.delete(fileId);
-            throw new BusinessException(ResultCode.CONTENT_REJECTED,
-                    "内容审核未通过：" + StrUtil.blankToDefault(moderation.reason(), "疑似违规内容"));
-        }
-
         // 5. 视频元数据入库（初始状态：转码中）
         Integer visibility = dto.getVisibility() == null ? VideoConstant.Visibility.PUBLIC : dto.getVisibility();
         Integer duration = dto.getDuration() == null ? 0 : dto.getDuration();
@@ -247,15 +240,51 @@ public class VideoService {
         // 7. 新视频ID加入布隆过滤器（防缓存穿透）
         bloomFilterUtil.add(RedisKeyConstant.VIDEO_BLOOM_KEY, video.getId());
 
-        // 8. 发送转码消息：MQ 启用则异步转码后发布，否则直接发布（无 broker 环境）
+        // 8. AI 内容审核改为异步：外网接口（DeepSeek/Qwen）+ ffmpeg 抽帧都是阻塞调用，
+        //    不能占用 Tomcat 请求线程拖慢合并响应；通过则发布，不通过则下架并删除文件。
+        moderateAndPublishAsync(video, dto, mergedBytes);
+
+        return video.getId();
+    }
+
+    /** 视频审核专用线程池：外网接口 + ffmpeg 均为阻塞调用，不能占用 Tomcat 请求线程 */
+    private static final ExecutorService MODERATION_EXECUTOR = Executors.newFixedThreadPool(2, r -> {
+        Thread t = new Thread(r, "video-moderation");
+        t.setDaemon(true);
+        return t;
+    });
+
+    /** 异步审核并发布：通过则走原转码/发布流程，不通过则下架并清理文件 */
+    private void moderateAndPublishAsync(Video video, VideoMergeDTO dto, byte[] mergedBytes) {
+        MODERATION_EXECUTOR.submit(() -> {
+            try {
+                ModerationResult moderation = moderationService.moderateVideo(
+                        dto.getTitle(), dto.getDescription(), dto.getTags(), dto.getCoverUrl(), mergedBytes);
+                if (!moderation.passed()) {
+                    videoMapper.updateStatus(video.getId(), VideoConstant.Status.OFF_SHELF);
+                    try {
+                        fileStorageService.delete(video.getFileId());
+                    } catch (Exception ignored) {
+                    }
+                    log.warn("视频 {} 审核未通过，已下架: {}", video.getId(), moderation.reason());
+                    return;
+                }
+                publishVideo(video);
+            } catch (Exception e) {
+                log.warn("视频 {} 异步审核异常，放行发布: {}", video.getId(), e.getMessage());
+                publishVideo(video);
+            }
+        });
+    }
+
+    /** 发送转码消息：MQ 启用则异步转码后发布，否则直接发布（无 broker 环境） */
+    private void publishVideo(Video video) {
         if (mqProducerService.isEnabled()) {
             mqProducerService.send(MqConstant.TOPIC_VIDEO, MqConstant.TAG_TRANSCODE,
                     "{\"videoId\":" + video.getId() + "}");
         } else {
             videoMapper.updateStatus(video.getId(), VideoConstant.Status.PUBLISHED);
         }
-
-        return video.getId();
     }
 
     /** 按序号合并所有分片字节 */

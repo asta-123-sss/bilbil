@@ -1,6 +1,6 @@
-# 仿B站视频平台（全栈：Spring Boot 后端 + Vue3 前端）
+# 映界（全栈：Spring Boot 后端 + Vue3 前端）
 
-一个仿照 B 站（Bilibili）的视频分享平台全栈项目：后端重点实现了 **视频分块上传 / 断点续传 / 秒传**、**个性化推荐**、**广告投放（CPM 计费）** 与 **AI 内容审核** 等核心能力，并围绕高并发读场景落地了 Redis 缓存、布隆过滤器防穿透、计数异步落库等工程实践；前端基于 **Vue3 + Element Plus** 实现了登录注册、视频列表、分块上传（断点续传/秒传/进度条）、视频播放（弹幕/点赞/收藏/评论/投币/关注）、分区频道、商家中心、消息中心等完整页面，前后端一体化打包、Docker 一键部署于阿里云。
+一个仿照 B 站（Bilibili）的视频分享平台全栈项目：后端重点实现了 **视频分块上传 / 断点续传 / 秒传**、**个性化推荐**、**广告投放（CPM 计费 + AI 智能排序）** 与 **AI 内容审核** 等核心能力，并围绕高并发读场景落地了 Redis 缓存、布隆过滤器防穿透、计数异步落库等工程实践；前端基于 **Vue3 + Element Plus** 实现了登录注册、视频列表、分块上传（断点续传/秒传/进度条）、视频播放（弹幕/点赞/收藏/评论/投币/关注）、分区频道、商家中心、消息中心等完整页面，前后端一体化打包、Docker 一键部署于阿里云。
 
 > 技术栈：Spring Boot 3 · MyBatis · MySQL 8 · Redis · Vue3 · Element Plus · Docker · DeepSeek · 通义千问 Qwen-VL · ffmpeg
 
@@ -16,9 +16,9 @@
 | 视频模块 | **分块上传 + 断点续传 + 秒传 + 分片合并**、封面图上传、视频列表 / 详情 / 播放、投稿管理、**作者编辑 / 删除自己的视频**、**观看历史** |
 | 互动模块 | 点赞 / 取消点赞、收藏 / 取消收藏、**投币 / 取消投币**、评论（含回复/子评论）、弹幕（MySQL 存储） |
 | 消息模块 | 点赞 / 评论 / 回复 / 关注 异步通知（RocketMQ 异步投递 + 降级直接落库）、**点对点私信** |
-| 广告模块 | 商家发布广告（CPM 计费）、兴趣定向投放、曝光扣费 / 预算控制、点击统计 |
+| 广告模块 | 商家发布广告（CPM 计费）、**AI 智能排序 + 兴趣定向投放**、曝光扣费 / 预算控制、点击统计 |
 | 商家模块 | 商家申请 / 审核、积分充值、商家自助管理广告 |
-| 内容审核 | 发布视频 / 广告前 **AI 自动审核**：DeepSeek 文本 + 通义千问 Qwen-VL 视觉 + ffmpeg 视频抽帧，违规自动拦截 |
+| 内容审核 | **AI 自动审核**：DeepSeek 文本 + 通义千问 Qwen-VL 视觉 + ffmpeg 视频抽帧，违规拦截（视频审核**异步**执行，不阻塞发布） |
 | 后台模块 | **管理员审核**：视频下架 / 恢复、用户封禁 / 解封、违规评论删除、商家申请审核 / 积分充值、广告管理 |
 | 分区模块 | 视频分类列表（Redis 缓存）+ 分区频道页 |
 
@@ -30,8 +30,9 @@
 4. **高并发计数**：点赞 / 收藏数由 Redis Set 原子维护（SADD/SREM），播放量 INCR 自增，通过定时任务批量回写 MySQL，避免高频写库。
 5. **Redis 原子会话**：登录 token 存入 Redis，支持滑动续期与退出删除。
 6. **异步解耦**：点赞 / 评论 / 关注 / 转码等消息通过 RocketMQ 异步处理，未部署 broker 时优雅降级为本地直写，开箱即用。
-7. **AI 内容审核**：发布视频 / 广告前，用 DeepSeek 审核标题简介标签，用通义千问 Qwen-VL 审核封面图与 ffmpeg 抽取的视频帧；未配 Key 或调用异常时自动 fail-open 放行，不阻塞正常发布。
+7. **AI 内容审核**：用 DeepSeek 审核标题简介标签，用通义千问 Qwen-VL 审核封面图与 ffmpeg 抽取的视频帧；视频审核**异步**执行（先发布、后台审核不通过再下架），未配 Key 或调用异常时 fail-open 放行，不阻塞发布。
 8. **广告投放**：兴趣定向投放（按用户偏好分区）、CPM 计费（每千次曝光扣费）、预算耗尽自动下线、余额不足自动暂停。
+9. **AI 智能广告排序**：基于用户兴趣画像（偏好分区 + 近期观看标题）用 DeepSeek 对候选广告做相关度排序，30 分钟 Redis 缓存；冷启动无行为信号或调用失败时自动回退规则式投放。
 
 ---
 
@@ -48,7 +49,7 @@
 | FastDFS | 分布式文件存储（可选，默认本地存储） | — |
 | Nginx | 静态资源 / 视频访问代理（生产） | — |
 | Docker | 容器化部署（app / mysql / redis 编排） | — |
-| DeepSeek | AI 文本审核（deepseek-chat） | — |
+| DeepSeek | AI 文本审核 + 智能广告排序（deepseek-chat） | — |
 | 通义千问 Qwen-VL | AI 视觉审核（封面图 / 视频帧） | qwen-vl-max |
 | ffmpeg | 视频抽帧（审核用） | — |
 | Lombok / Hutool | 开发提效工具 | 5.8.26 |
@@ -71,7 +72,7 @@ bilbil
 │   │   └── util/                   # UserContext、布隆过滤器工具
 │   ├── config/                     # 配置类（Redis / Web / RocketMQ / 业务属性）
 │   ├── controller/                 # 接口层（16 个 Controller）
-│   ├── service/                    # 业务层（含 ContentModerationService 审核、FrameExtractor 抽帧）
+│   ├── service/                    # 业务层（含 ContentModerationService 审核、AdRankingService 智能广告排序、FrameExtractor 抽帧）
 │   ├── mapper/                     # MyBatis 数据访问层
 │   ├── entity/  dto/  vo/          # 实体 / 入参 / 出参
 │   ├── interceptor/                # 登录拦截器
@@ -153,6 +154,10 @@ bilbil:
     enabled: true
     text-api-key: ${DEEPSEEK_API_KEY:}      # DeepSeek 文本审核
     vision-api-key: ${DASHSCOPE_API_KEY:}   # 通义千问 Qwen-VL 视觉审核
+  ad-ranking:
+    enabled: true
+    api-key: ${DEEPSEEK_API_KEY:}           # AI 智能广告排序（复用 DeepSeek）
+    top-n: 5
 ```
 
 > AI 内容审核默认开启，但**未配置对应 Key 时对应环节自动跳过**（fail-open），不影响本地运行。
@@ -252,7 +257,7 @@ java -jar target/bilbil-*.jar
 | PUT | `/api/ad/{id}/status` | 暂停 / 继续 / 结束广告 | 是（商家） |
 | DELETE | `/api/ad/{id}` | 删除广告 | 是（商家） |
 | POST | `/api/ad/cover` | 上传广告图 | 是（商家） |
-| GET | `/api/ad/feed` | 信息流广告（兴趣定向投放） | 否 |
+| GET | `/api/ad/feed` | 信息流广告（AI 智能排序 + 兴趣定向投放） | 否 |
 | POST | `/api/ad/{id}/click` | 广告点击（CTR 统计） | 否 |
 
 ### 商家模块
@@ -354,7 +359,7 @@ npm run dev            # 默认 http://localhost:5173
 
 - 用 `spark-md5` **增量**计算整文件 MD5（分片读取，不卡主线程）；
 - `POST /video/upload/init` 返回 `uploadId` + `uploadedIndexes`（断点续传）+ `alreadyExists`（秒传）；
-- 已上传分片跳过，缺失分片按 5MB 切片、并发 3 上传，进度回调驱动进度条；
+- 已上传分片跳过，缺失分片按 1MB 切片、并发 3 上传（慢网络下更不易超时），进度回调驱动进度条；
 - 秒传命中时直接跳转已有视频；否则填元数据后 `POST /video/upload/merge` 合并入库并跳转播放页。
 
 ### 端到端演示流程

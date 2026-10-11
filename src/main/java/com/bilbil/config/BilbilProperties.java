@@ -23,6 +23,8 @@ public class BilbilProperties {
     private Token token = new Token();
     /** AI 内容审核配置 */
     private Moderation moderation = new Moderation();
+    /** AI 智能广告投放配置 */
+    private AdRanking adRanking = new AdRanking();
 
     @Data
     public static class Storage {
@@ -82,5 +84,23 @@ public class BilbilProperties {
         private int frameCount = 3;
         /** 单次审核超时（秒） */
         private int timeoutSeconds = 120;
+    }
+
+    @Data
+    public static class AdRanking {
+        /** 是否启用智能投放（false 时走规则式投放） */
+        private boolean enabled = true;
+        /** DeepSeek API Key（环境变量 DEEPSEEK_API_KEY） */
+        private String apiKey = "";
+        /** OpenAI 兼容接口地址 */
+        private String baseUrl = "https://api.deepseek.com";
+        /** 模型名称 */
+        private String model = "deepseek-chat";
+        /** 每次返回广告条数 */
+        private int topN = 5;
+        /** 候选广告池大小 */
+        private int candidatePoolSize = 30;
+        /** 单次排序超时（秒） */
+        private int timeoutSeconds = 10;
     }
 }

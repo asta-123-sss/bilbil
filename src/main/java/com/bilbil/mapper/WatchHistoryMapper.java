@@ -47,4 +47,9 @@ public interface WatchHistoryMapper {
     /** 查询用户观看过的所有视频ID（个性化推荐去重/排除用） */
     @Select("SELECT video_id FROM watch_history WHERE user_id = #{userId}")
     List<Long> selectVideoIdsByUserId(@Param("userId") Long userId);
+
+    /** 查询用户最近观看过的视频标题（AI 智能广告投放的兴趣信号） */
+    @Select("SELECT v.title FROM watch_history w JOIN video v ON v.id = w.video_id " +
+            "WHERE w.user_id = #{userId} ORDER BY w.update_time DESC LIMIT #{limit}")
+    List<String> selectRecentTitles(@Param("userId") Long userId, @Param("limit") int limit);
 }

@@ -1,7 +1,7 @@
 import SparkMD5 from 'spark-md5'
 import { initUpload, uploadChunk } from '../api/video'
 
-const CHUNK_SIZE = 5 * 1024 * 1024 // 5MB
+const CHUNK_SIZE = 1 * 1024 * 1024 // 1MB（上行带宽慢时分片更小，单个分片更快完成，避免撞超时）
 
 /**
  * 增量计算整文件 MD5（分片读取，避免大文件一次性载入内存卡死主线程）

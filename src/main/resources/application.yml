@@ -79,6 +79,15 @@ bilbil:
     vision-model: ${DASHSCOPE_MODEL:qwen-vl-max}
     frame-count: 3
     timeout-seconds: 120
+  # AI 智能广告投放（按用户兴趣画像排序；未配 key 时自动回退规则式投放）
+  ad-ranking:
+    enabled: ${BILBIL_AD_RANKING_ENABLED:true}
+    api-key: ${DEEPSEEK_API_KEY:}
+    base-url: ${DEEPSEEK_BASE_URL:https://api.deepseek.com}
+    model: ${DEEPSEEK_MODEL:deepseek-chat}
+    top-n: 5
+    candidate-pool-size: 30
+    timeout-seconds: 10
 
 # ---------------- 日志 ----------------
 logging:

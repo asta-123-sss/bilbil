@@ -48,6 +48,9 @@ public final class RedisKeyConstant {
     /** 分片上传会话元数据：video:upload:{uploadId} -> JSON（fileName/fileSize/chunkCount/fileMd5） */
     public static final String UPLOAD_META_KEY = "bilbil:video:upload:";
 
+    /** 用户广告智能排序缓存：ad:rank:{userId} -> 有序 adId 列表 JSON */
+    public static final String AD_RANK_KEY = "bilbil:ad:rank:";
+
     /** 生成 token key */
     public static String tokenKey(String token) {
         return TOKEN_KEY + token;
@@ -91,5 +94,10 @@ public final class RedisKeyConstant {
     /** 分片上传会话元数据 key */
     public static String uploadMetaKey(String uploadId) {
         return UPLOAD_META_KEY + uploadId;
+    }
+
+    /** 广告智能排序缓存 key */
+    public static String adRankKey(Long userId) {
+        return AD_RANK_KEY + userId;
     }
 }

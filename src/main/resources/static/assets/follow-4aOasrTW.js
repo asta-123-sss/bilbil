@@ -1,0 +1,1 @@
+import{C as l}from"./index-Dk-XQZbA.js";const t=o=>l.post(`/follow/${o}`),n=o=>l.delete(`/follow/${o}`),a=(o,s)=>l.get(`/follow/${o}/followings`,{params:s}),e=(o,s)=>l.get(`/follow/${o}/fans`,{params:s});export{a,e as b,t as f,n as u};
